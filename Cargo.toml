@@ -1,0 +1,6 @@
+[package]
+name = "affine_gap_allignment"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
