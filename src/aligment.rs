@@ -1,7 +1,7 @@
 //alignment.rs
 //  Allignmnet algorithms for projects in CS 471
 
-use std::{num::TryFromIntError, str::pattern::Pattern};
+use std::{cmp, num::TryFromIntError, str::pattern::Pattern};
 
 use crate::types::*;
 
@@ -47,20 +47,87 @@ Gotoh Alg:
     moving forward in seq 1. This would represent a scenario where there is new genetic material in
     between characters of our original sequence.
 */
-fn gotoh(seq1: &str, seq2: &str, params: &ScoringSystem) -> Alignment {
+
+// Accepts any two sequences of bytes, might be fun to try on other data
+fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, String> {
+    // Get the value of every parameter needed from the param struct
+    // if is not provided return Err(String(message)) to be printed by main
+    let match_s = params.match_score().ok_or("Missing match score parameter".to_string())?;
+    let mismatch = params.mismatch_score().ok_or("Missing mismatch score parameter".to_string())?;
+    let gap_open = params.gap_open_score().ok_or("Missing gap open score parameter".to_string())?;
+    let gap_extend = params.gap_extend_score().ok_or("Missing gap extend score parameter".to_string())?;
+    
     let mut alignment_seq1 = String::new();
     let mut alignment_seq2 = String::new();
     let mut optimal_score = 0;
+
     let (m, n) = (seq1.len(), seq2.len());
 
     let mut scores = vec![vec![MDICell::default(); n+1]; m+1];
 
+    // Populate score matrix
     scores[0][0].m_score = 0;
 
-    for i in 1..=m{
-        scores[i][0].d_score = 
+    for i in 1..=m {                   
+        scores[i][0].d_score = ((i as i32) - 1) * gap_extend + gap_open;
     }
     
+    for j in 1..=n {
+        scores[0][j].i_score = ((j as i32) - 1) * gap_extend + gap_open;
+    }
+
+    for i in 1..=m {
+        for j in 1..=n {
+
+            let match_mismatch_score = if seq1[i-1] == seq2[j-1] {match_s} else {mismatch};
+
+            //Somehow this is the cleanest way to get the max of threes expressions
+            scores[i][j].m_score = *[
+                scores[i-1][j-1].m_score + match_mismatch_score,
+                scores[i-1][j-1].d_score + match_mismatch_score,
+                scores[i-1][j-1].i_score + match_mismatch_score,
+            ].iter().max().unwrap();
+
+            scores[i][j].d_score = cmp::max(
+                scores[i-1][j].m_score + gap_open,
+                scores[i-1][j].d_score + gap_extend,
+            );
+
+            scores[i][j].d_score = cmp::max(
+                scores[i][j-1].m_score + gap_open,
+                scores[i][j-1].d_score + gap_extend,
+            );
+        }
+    }
+
+    // Traceback Optimal Score 
+    
+    // Find which score had the max
+    // code for finding index of max elemnent from: https://stackoverflow.com/a/53908709
+    // I just added the match statement to make it fit my needs
+    // This works by adding all of the scores to a list, numbering them, finding the max score and
+    // returning its associated number (max_by) then mapping that to the characters.
+    // Kind of awful readability and should probably be split into multiple lines but this solution
+    // is to fun to redo
+    let mut current_op = [
+        scores[m][n].m_score, //0
+        scores[m][n].d_score, //1
+        scores[m][n].i_score, //2
+    ]
+    .iter()
+    .enumerate()
+    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+    .map(|(index, _)| match index {
+        0 => 'm',
+        1 => 'd',
+        2 => 'i',
+        _ => panic!("You shouldn't be able to reach this")
+    })
+    .unwrap();
+
+    while  {
+        
+    }
 
     let stats = AllignmentStats::new(
         allignment_length,
@@ -70,10 +137,10 @@ fn gotoh(seq1: &str, seq2: &str, params: &ScoringSystem) -> Alignment {
         gap_extend_count, 
         total_gaps, 
         identity_percent
-    )
+    );
 
 
-    let alignmnet = Alignment::new(score, sequence1, sequence2, stats);
+    Ok(Alignment::new(optimal_score , alignment_seq1, alignment_seq2, stats))
 }
 
 fn smith_waterman(seq1: &str, seq2: &str, params: &ScoringSystem) -> Alignment {

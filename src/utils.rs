@@ -1,8 +1,8 @@
 //utils.rs
 // Helper functions (I/O stuff, file parsing, stats)
 
-// Read sequnce data into strings
-//fn  _______ (filename: &str) -> Result<(String, String), Error>
+// Read sequence data into Vec<u8
+//fn  _______ (filename: &str) -> Result<(Vec<u8>, Vec<u8>), Error>
 
 // Init scoring params
 //fn _________ (filename: Option<&str>) -> Result<ScoringParams, Error>
