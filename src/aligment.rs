@@ -125,9 +125,42 @@ fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, 
     })
     .unwrap();
 
-    while  {
-        
+    
+    //don't polute the full function scope with i and j
+    {let (mut i, mut j) = (m, n);
+        while (i > 0) && (j > 0) {
+            //Add letters to sequence
+            //Check how we could have gotten here
+            //Decrement in appropriate direction and set current_op
+            match current_op {
+                'm' => {
+                    alignment_seq1.push(seq1[]);
+                }
+                'd' => {
+                    
+                }
+                'i' => {
+                    
+                }
+                _ => {panic!("current_op was not a deletion, insertion, or match/mismatch")},
+            }
+        }
+
+        //Collect last row or column
+        while i > 0 {
+            alignment_seq1.push(seq1[i-1] as char);
+            alignment_seq2.push('-');
+            i -= 1;
+        }
+
+        while j > 0 {
+            alignment_seq1.push('-');
+            alignment_seq2.push(seq2[j-1] as char);
+            j -= 1;
+        }
     }
+    alignment_seq1 = alignment_seq1.chars().rev().collect();
+    alignment_seq2 = alignment_seq2.chars().rev().collect();
 
     let stats = AllignmentStats::new(
         allignment_length,
