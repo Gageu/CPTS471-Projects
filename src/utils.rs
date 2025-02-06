@@ -1,7 +1,6 @@
 //utils.rs
 // Helper functions (I/O stuff, file parsing, stats)
 
-
 // Read sequnce data into strings
 //fn  _______ (filename: &str) -> Result<(String, String), Error>
 

@@ -1,32 +1,26 @@
-
 /*
-    -------- Project Structure ---------
+   -------- Project Structure ---------
 
-    src/
-    |-- main.rs          # Main logic for each assignment (funtions for each project that get called by main (i.e. project1(); project2(); etc... )
-    |-- types.rs         # Structs and types used across projects
-    |-- alignment.rs     # Alignment algorithms
-    |-- utils.rs         # Helper functions (I/O stuff, file parsing, stats)
- */
-
+   src/
+   |-- main.rs          # Main logic for each assignment (funtions for each project that get called by main (i.e. project1(); project2(); etc... )
+   |-- types.rs         # Structs and types used across projects
+   |-- alignment.rs     # Alignment algorithms
+   |-- utils.rs         # Helper functions (I/O stuff, file parsing, stats)
+*/
 
 // Modules ----------
-mod types;
 mod aligment;
+mod types;
 mod utils;
 //-------------------
 
 // Use Statements ---
 
-
-
 //-------------------
-
 
 fn main() {
     project1();
 }
-
 
 /*
 PROJECT 1:
@@ -60,21 +54,24 @@ Gotoh Alg:
                 - If current score is in M then check all possible moves from cells above or to the left
                 - If current score is in D or I, then check Match score + gap start penalty, and previous self score + extend
             Add seq1[i] and seq2[j] or gap to output strings depending on what path is traced.
-    
+
     Calculate statistics and format output:
         -sequence lengths
         -optimal path
         -optimal score
-        -match, mismatch, gap open and gap extend occurences 
+        -match, mismatch, gap open and gap extend occurences
         -identity percent
         -gap count
 
 */
 
-fn project1(){
-    /* Steps:
-        - read sequences
-        - 
-     */
+fn project1() {
+    /* TODO:
+       - read sequences
+       - read scoring system
+       - pass to allignment functions
+       - output scores and stats
+    */
 
+    
 }
