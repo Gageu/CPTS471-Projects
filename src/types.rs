@@ -2,6 +2,10 @@
 
 use std::default;
 
+pub enum GeneOperations {
+    
+}
+
 pub struct Alignment{
     score: i32,
     sequence1: String,
