@@ -1,3 +1,8 @@
+use std::env;
+
+use aligment::gotoh;
+use utils::{parse_sequences_from_fasta, read_score_config};
+
 /*
    -------- Project Structure ---------
 
@@ -15,7 +20,6 @@ mod utils;
 //-------------------
 
 // Use Statements ---
-
 //-------------------
 
 fn main() {
@@ -73,5 +77,42 @@ fn project1() {
        - output scores and stats
     */
 
+    let args: Vec<String> = env::args().collect();
     
+    if args.len() < 3 || args.len() > 4 {
+        eprintln!("Incorrect number of arguments provided");
+    }
+
+    // Args don't change, so use imutable borrow
+    let fasta_file = &args[1];
+    let alg_select = &args[1];
+    let scoring_config = if args.len() == 4 {
+        args[3].clone()
+    } else {
+        "./parameters.config".to_string()
+    };
+
+    println!("{}", scoring_config);
+    
+    let score_system = match read_score_config(&scoring_config) {
+        Ok(sys) => sys,
+        Err(e) => return // fix later with proper error handling
+    };
+
+    let sequences = match parse_sequences_from_fasta(&fasta_file){
+        Ok(seq) => seq,
+        Err(e) => return // fix later with proper error handling
+    };
+
+    let gotoh_result = gotoh(
+        &sequences[0], 
+        &sequences[1], 
+        &score_system)
+        .unwrap_or_else(|e|{
+            eprintln!("{}", e);
+            std::process::exit(1);
+        });
+
+    println!("{}", gotoh_result.sequence1());
+    println!("{}", gotoh_result.sequence2());
 }

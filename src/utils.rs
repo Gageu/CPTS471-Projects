@@ -1,19 +1,20 @@
 //utils.rs
 
-use std::{fs::File, io::{BufRead, BufReader}};
+use std::{fs::File, io::{BufRead, BufReader, Error}, vec};
 
-use crate::types::AllignmentStats;
+use crate::types::{AllignmentStats, ScoringSystem};
 
 // Helper functions (I/O stuff, file parsing, stats)
 
 // Read all sequences from fasta gile
-fn parse_sequences_from_fasta(filename: &str) -> Result<Vec<Vec<u8>>, Error>{
+pub fn parse_sequences_from_fasta(filename: &str) -> Result<Vec<Vec<u8>>, Error>{
     let file = BufReader::new(File::open(filename)?);
-    let mut sequences: Vec<Vec<u8>> = Vec::new();
-    let mut current_sequence: Vec<u8> = Vec::new();
+    let mut sequences: Vec<Vec<u8>> = vec![];
+    let mut current_sequence: Vec<u8> = vec![];
 
     for line in file.lines() {
-        let trimmed = line?.trim();
+        let line = line?;
+        let trimmed = line.trim();
 
         
         if trimmed.is_empty(){
@@ -21,15 +22,75 @@ fn parse_sequences_from_fasta(filename: &str) -> Result<Vec<Vec<u8>>, Error>{
         }
 
         if trimmed.starts_with('>'){
-            if current_sequence.is_empty(){
+            if !current_sequence.is_empty(){
                 sequences.push(current_sequence);
+                current_sequence = vec![];
             }
+        } else {
+            current_sequence.extend(
+                trimmed
+                .bytes()
+                .filter(|byte| !byte.is_ascii_whitespace())
+            );
         }
     }
+
+    if !current_sequence.is_empty(){
+        sequences.push(current_sequence);
+    }
+
+    Ok(sequences)
 }
 
 // Init scoring params
-//fn _________ (filename: Option<&str>) -> Result<ScoringParams, Error>
+pub fn read_score_config(filename: &str) -> Result<ScoringSystem, String>{
+    /* TODO:
+        - Handle case where there is only a gap penalty specified and not seperate extend and open scores
+     */
+    println!("trying to open: {}", filename);
+
+    let file = match File::open(filename) {
+        Ok(file) => file,
+        Err(e) => return Err(e.to_string())
+    };
+    let reader = BufReader::new(file);
+    
+    let mut match_score = None;
+    let mut mismatch_score = None;
+    let mut gap_open_score = None;
+    let mut gap_extend_score = None;
+    
+    for line in reader.lines() {
+        let line = line.map_err(|e| e.to_string())?;
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        
+        if parts.len() < 2 {
+            continue;
+        }
+        
+        let param_name = parts[0];
+        let value = match parts[1].parse::<i32>() {
+            Ok(val) => val,
+            Err(e) => return Err(e.to_string())
+        };
+        
+        match param_name {
+            "match" => match_score = Some(value),
+            "mismatch" => mismatch_score = Some(value),
+            "h" => gap_open_score = Some(value),
+            "g" => gap_extend_score = Some(value),
+            _ => {}
+        }
+    }
+    
+    Ok(ScoringSystem::new(
+        match_score, 
+        mismatch_score, 
+        None, 
+        gap_open_score, 
+        gap_extend_score)
+    )
+}
 
 // Allignment stats
 pub fn calculate_alignmnet_stats(seq1: &str, seq2: &str) -> AllignmentStats {

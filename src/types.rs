@@ -80,9 +80,9 @@ impl MDICell{
 
     pub fn default() -> Self{
         MDICell{
-            m_score: i32::MIN,
-            d_score: i32::MIN,
-            i_score: i32::MIN,
+            m_score: i32::MIN / 2,
+            d_score: i32::MIN / 2,
+            i_score: i32::MIN / 2,
         }
     }
 }
@@ -100,6 +100,10 @@ pub struct ScoringSystem{
 
 impl ScoringSystem {
 
+    pub fn new(match_score: Option<i32>, mismatch_score: Option<i32>, gap_score: Option<i32>, gap_open_score: Option<i32>, gap_extend_score: Option<i32>) -> Self {
+        Self { match_score, mismatch_score, gap_score, gap_open_score, gap_extend_score }
+    }
+    
     //--------- Getters ------------
     pub fn match_score(&self) -> Option<i32> {
         self.match_score
@@ -121,6 +125,4 @@ impl ScoringSystem {
         self.gap_extend_score
     }
     //--------------------------------
-
-    pub fn 
 }

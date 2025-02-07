@@ -46,7 +46,7 @@ Gotoh Alg:
 */
 
 // Accepts any two sequences of bytes, might be fun to try on other data
-fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, String> {
+pub fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, String> {
     //TODO: switch return type to be a u8 instead of string since RUst has strings encoded in utf8
     //      which is more complexity than makes sense for fasta since it's ASCII encoded
 
@@ -77,6 +77,8 @@ fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, 
 
     // Populate score matrix
     scores[0][0].m_score = 0;
+    scores[0][0].d_score = gap_open;
+    scores[0][0].i_score = gap_open;
 
     for i in 1..=m {
         scores[i][0].d_score = ((i as i32) - 1) * gap_extend + gap_open;
@@ -252,4 +254,4 @@ fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, 
     ))
 }
 
-fn smith_waterman(seq1: &str, seq2: &str, params: &ScoringSystem) -> Alignment {}
+//fn smith_waterman(seq1: &str, seq2: &str, params: &ScoringSystem) -> Alignment {}
