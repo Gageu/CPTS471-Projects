@@ -1,9 +1,10 @@
 //alignment.rs
 //  Allignmnet algorithms for projects in CS 471
 
-use std::{cmp, num::TryFromIntError, str::pattern::Pattern};
+use std::cmp;
 
 use crate::types::*;
+use crate::utils::calculate_alignmnet_stats;
 
 // Neddleman-Wunsch w/ affine gaps a.k.a Gotoh '82:
 
@@ -70,6 +71,8 @@ fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, 
 
     let (m, n) = (seq1.len(), seq2.len());
 
+    if m == 0 || n == 0 {return Err("One or both of the sequences is empty".to_string())}
+
     let mut scores = vec![vec![MDICell::default(); n + 1]; m + 1];
 
     // Populate score matrix
@@ -106,12 +109,22 @@ fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, 
                 scores[i - 1][j].d_score + gap_extend,
             );
 
-            scores[i][j].d_score = cmp::max(
+            scores[i][j].i_score = cmp::max(
                 scores[i][j - 1].m_score + gap_open,
-                scores[i][j - 1].d_score + gap_extend,
+                scores[i][j - 1].i_score + gap_extend,
             );
         }
     }
+
+    optimal_score = *[
+        scores[m][n].m_score, //0
+        scores[m][n].d_score, //1
+        scores[m][n].i_score, //2
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
 
     // Traceback Optimal Score
 
@@ -150,7 +163,8 @@ fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, 
                     alignment_seq1.push(seq1[i - 1] as char);
                     alignment_seq2.push(seq2[j - 1] as char);
 
-                    // Adding a constant 
+                    // Adding a constant to each of the adjacent cell preserves the relative ordering
+                    // So there really isn't a reason to do it and we can omit it as an optimization
                     // let match_mismatch_score = if seq1[i - 1] == seq2[j - 1] {
                     //     match_s
                     // } else {
@@ -172,34 +186,40 @@ fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, 
                     i -= 1;
                     j -= 1;
                 }
+
                 'd' => {
                     alignment_seq1.push(seq1[i - 1] as char);
                     alignment_seq2.push('-');
 
                     let above_cell = scores[i - 1][j];
 
-                    current_op = if above_cell.m_score >= above_cell.i_score
+                    //It may be more reasonable biologically to extend a gap in the case of a tie
+                    //i'm not sure though so I'g gonna leave it as is
+                    current_op = if above_cell.m_score + gap_open >= above_cell.i_score + gap_extend
                     {
                         'm'
                     } else {
-                        'i'
+                        'd'
                     };
 
                     i -= 1;
                 }
+
                 'i' => {
                     alignment_seq1.push('-');
-                    alignment_seq2.push(seq1[i - 1] as char);
+                    alignment_seq2.push(seq2[i - 1] as char);
 
                     let left_cell = scores[i][j - 1];
 
-                    current_op = if left_cell.m_score >= left_cell.i_score
-                    {
+                    current_op = if left_cell.m_score + gap_open >= left_cell.i_score + gap_extend {
                         'm'
                     } else {
                         'i'
                     };
+
+                    j -= 1
                 }
+
                 _ => {
                     panic!("current_op was not a deletion, insertion, or match/mismatch")
                 }
@@ -222,15 +242,7 @@ fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, 
     alignment_seq1 = alignment_seq1.chars().rev().collect();
     alignment_seq2 = alignment_seq2.chars().rev().collect();
 
-    let stats = AllignmentStats::new(
-        allignment_length,
-        match_count,
-        mismatch_count,
-        gap_open_count,
-        gap_extend_count,
-        total_gaps,
-        identity_percent,
-    );
+    let stats = calculate_alignmnet_stats(&alignment_seq1, &alignment_seq2);
 
     Ok(Alignment::new(
         optimal_score,
