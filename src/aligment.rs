@@ -150,11 +150,12 @@ fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, 
                     alignment_seq1.push(seq1[i - 1] as char);
                     alignment_seq2.push(seq2[j - 1] as char);
 
-                    let match_mismatch_score = if seq1[i - 1] == seq2[j - 1] {
-                        match_s
-                    } else {
-                        mismatch
-                    };
+                    // Adding a constant 
+                    // let match_mismatch_score = if seq1[i - 1] == seq2[j - 1] {
+                    //     match_s
+                    // } else {
+                    //     mismatch
+                    // };
 
                     let diag_cell = scores[i - 1][j - 1];
 
@@ -178,18 +179,27 @@ fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, 
                     let above_cell = scores[i - 1][j];
 
                     current_op = if above_cell.m_score >= above_cell.i_score
-                        && above_cell.m_score >= above_cell.d_score
                     {
                         'm'
-                    } else if above_cell.d_score >= above_cell.i_score {
-                        'd'
                     } else {
                         'i'
                     };
 
                     i -= 1;
                 }
-                'i' => {}
+                'i' => {
+                    alignment_seq1.push('-');
+                    alignment_seq2.push(seq1[i - 1] as char);
+
+                    let left_cell = scores[i][j - 1];
+
+                    current_op = if left_cell.m_score >= left_cell.i_score
+                    {
+                        'm'
+                    } else {
+                        'i'
+                    };
+                }
                 _ => {
                     panic!("current_op was not a deletion, insertion, or match/mismatch")
                 }
