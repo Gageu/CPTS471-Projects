@@ -1,7 +1,7 @@
 use std::env;
 
 use aligment::gotoh;
-use utils::{parse_sequences_from_fasta, read_score_config};
+use utils::{parse_sequences_from_fasta, read_score_config, print_alignment, len_without_gaps};
 
 /*
    -------- Project Structure ---------
@@ -70,12 +70,6 @@ Gotoh Alg:
 */
 
 fn project1() {
-    /* TODO:
-       - read sequences
-       - read scoring system
-       - pass to allignment functions
-       - output scores and stats
-    */
 
     let args: Vec<String> = env::args().collect();
     
@@ -92,7 +86,8 @@ fn project1() {
         "./parameters.config".to_string()
     };
 
-    println!("{}", scoring_config);
+    println!("INPUT:");
+    println!("******\n");
     
     let score_system = match read_score_config(&scoring_config) {
         Ok(sys) => sys,
@@ -104,6 +99,14 @@ fn project1() {
         Err(e) => return // fix later with proper error handling
     };
 
+    for (i, sequence) in sequences.iter().enumerate() {
+        println!(">s{}", i + 1);
+        for &byte in sequence {
+            print!("{}", byte as char);
+        }
+        println!("\n");
+    }
+
     let gotoh_result = gotoh(
         &sequences[0], 
         &sequences[1], 
@@ -113,6 +116,39 @@ fn project1() {
             std::process::exit(1);
         });
 
-    println!("{}", gotoh_result.sequence1());
-    println!("{}", gotoh_result.sequence2());
+    println!("\nOUTPUT:");
+    println!("********\n");
+    
+    println!("Scores:    match = {}, mismatch = {}, h = {}, g = {}\n",
+        score_system.match_score().unwrap(),
+        score_system.mismatch_score().unwrap(),
+        score_system.gap_open_score().unwrap(),
+        score_system.gap_extend_score().unwrap()
+    );
+
+    println!("Sequence 1 = \"s1\", length = {} characters",
+        len_without_gaps(gotoh_result.sequence1()));
+    println!("Sequence 2 = \"s2\", length = {} characters\n",
+        len_without_gaps(gotoh_result.sequence2()));
+
+    print_alignment(gotoh_result.sequence1(), gotoh_result.sequence2());
+
+    let stats = gotoh_result.stats();
+    println!("Report:");
+    println!("Global optimal score = {}", gotoh_result.score());
+    println!("\nNumber of:  matches = {}, mismatches = {}, opening gaps = {}, gap extensions = {}",
+        stats.match_count(),
+        stats.mismatch_count(),
+        stats.gap_open_count(),
+        stats.gap_extend_count()
+    );
+
+    println!("\nIdentities = {}/{} ({}%), Gaps = {}/{} ({}%)",
+    stats.match_count(),
+    stats.alignment_length(),
+    stats.identity_percent(),
+    stats.total_gaps(),
+    stats.alignment_length(),
+    (stats.total_gaps() as f32 / stats.alignment_length() as f32 * 100.0).round()
+    );
 }

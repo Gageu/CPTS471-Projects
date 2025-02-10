@@ -38,7 +38,7 @@ impl Alignment {
 }
 
 pub struct AllignmentStats{
-    allignment_length: i32,
+    alignment_length: i32,
     match_count: i32,
     mismatch_count: i32,
     gap_open_count: i32,
@@ -49,7 +49,7 @@ pub struct AllignmentStats{
 
 impl AllignmentStats {
     pub fn new(
-        allignment_length: i32, 
+        alignment_length: i32, 
         match_count: i32,
         mismatch_count: i32, 
         gap_open_count: i32, 
@@ -58,7 +58,7 @@ impl AllignmentStats {
         identity_percent: f32
     ) -> Self {
         Self { 
-            allignment_length, 
+            alignment_length, 
             match_count, 
             mismatch_count, 
             gap_open_count, 
@@ -66,6 +66,34 @@ impl AllignmentStats {
             total_gaps, 
             identity_percent 
         }
+    }
+    
+    pub fn alignment_length(&self) -> i32 {
+        self.alignment_length
+    }
+    
+    pub fn match_count(&self) -> i32 {
+        self.match_count
+    }
+    
+    pub fn mismatch_count(&self) -> i32 {
+        self.mismatch_count
+    }
+    
+    pub fn gap_open_count(&self) -> i32 {
+        self.gap_open_count
+    }
+    
+    pub fn gap_extend_count(&self) -> i32 {
+        self.gap_extend_count
+    }
+    
+    pub fn total_gaps(&self) -> i32 {
+        self.total_gaps
+    }
+    
+    pub fn identity_percent(&self) -> f32 {
+        self.identity_percent
     }
 }
 

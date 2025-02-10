@@ -209,7 +209,7 @@ pub fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignme
 
                 'i' => {
                     alignment_seq1.push('-');
-                    alignment_seq2.push(seq2[i - 1] as char);
+                    alignment_seq2.push(seq2[j - 1] as char);
 
                     let left_cell = scores[i][j - 1];
 

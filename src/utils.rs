@@ -1,6 +1,6 @@
 //utils.rs
 
-use std::{fs::File, io::{BufRead, BufReader, Error}, vec};
+use std::{cmp, fs::File, io::{BufRead, BufReader, Error}, vec};
 
 use crate::types::{AllignmentStats, ScoringSystem};
 
@@ -47,7 +47,6 @@ pub fn read_score_config(filename: &str) -> Result<ScoringSystem, String>{
     /* TODO:
         - Handle case where there is only a gap penalty specified and not seperate extend and open scores
      */
-    println!("trying to open: {}", filename);
 
     let file = match File::open(filename) {
         Ok(file) => file,
@@ -143,7 +142,10 @@ pub fn calculate_alignmnet_stats(seq1: &str, seq2: &str) -> AllignmentStats {
         }
     }
 
-    let alignment_length = seq1.len() as i32;
+    let alignment_length = cmp::max(
+        len_without_gaps(seq1),
+        len_without_gaps(seq2));
+
     let identity_percent = (match_count as f32 / alignment_length as f32) * 100.0;
 
     AllignmentStats::new(
@@ -157,5 +159,43 @@ pub fn calculate_alignmnet_stats(seq1: &str, seq2: &str) -> AllignmentStats {
     )
 }
 
-// Format output
-// fn format_alignment_output(result: &AlignmentResult) -> String
+// Print two sequences as described by the assignment description
+// bars connecting matches, index at end of every line and wrpeed every 60 characters
+pub fn print_alignment(seq1: &str, seq2: &str) {
+    let len = seq1.len();
+    let line_size = 60;
+    
+    for line_start in (0..len).step_by(line_size) {
+        let line_end = std::cmp::min(line_start + line_size, len);
+        
+        println!("s1 {:<5} {} {}", 
+            line_start + 1,
+            &seq1[line_start..line_end],
+            line_end
+        );
+        
+        //Allign the middle bar
+        print!("         ");
+        for i in line_start..line_end {
+            //if they match and aren;t a gap
+            if seq1.chars().nth(i) == seq2.chars().nth(i) && seq1.chars().nth(i) != Some('-') {
+                print!("|");
+            } else {
+                print!(" ");
+            }
+        }
+        println!();
+        
+        println!("s2 {:<5} {} {}\n", 
+            line_start + 1,
+            &seq2[line_start..line_end],
+            line_end
+        );
+    }
+}
+
+pub fn len_without_gaps(seq: &str) -> i32{
+    seq.chars()
+    .filter(|c| *c != '-')
+    .count() as i32
+}
