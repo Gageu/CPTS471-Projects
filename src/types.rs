@@ -1,6 +1,5 @@
 //types.rs
 
-use std::default;
 
 pub enum GeneOperations {
     

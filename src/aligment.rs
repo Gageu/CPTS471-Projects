@@ -375,30 +375,6 @@ pub fn smith_waterman(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Resul
     .unwrap();
     // Traceback Optimal Score
 
-    // Find which score had the max
-    // code for finding index of max elemnent from: https://stackoverflow.com/a/53908709
-    // I just added the match statement to make it fit my needs
-    // This works by adding all of the scores to a list, numbering them, finding the max score and
-    // returning its associated number (max_by) then mapping that to the characters.
-    // Kind of awful readability and should probably be split into multiple lines but this solution
-    // is to fun to redo
-
-    // let mut current_op = [
-    //     scores[m][n].m_score, //0
-    //     scores[m][n].d_score, //1
-    //     scores[m][n].i_score, //2
-    // ]
-    // .iter()
-    // .enumerate()
-    // .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-    // .map(|(index, _)| match index {
-    //     0 => 'm',
-    //     1 => 'd',
-    //     2 => 'i',
-    //     _ => panic!("You shouldn't be able to reach this"),
-    // })
-    // .unwrap();
-
     //don't polute the full function scope with i and j
     {
         let (mut i, mut j) = (max_index_i, max_index_j);
