@@ -254,4 +254,272 @@ pub fn gotoh(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignme
     ))
 }
 
-//fn smith_waterman(seq1: &str, seq2: &str, params: &ScoringSystem) -> Alignment {}
+/* Smith-Waterman Algorithm with affine gaps.
+   The Smith Waterman algorithm works the same Gotoh/Needleman, but for local allignments
+   To accomplish this we do a few things.
+   1. When initializing the score penalties we do not start with gap penalties (use 0 instead)
+   2. When populating the inside of the score matrix we limit the score to a floor of 0
+   3. During the traceback we look for the higest score anywhere in the matrix and traceback until
+        a 0 in encountered.
+
+    Together these three changes allow us to identify the best aligned segments of the two sequences
+    by not penalizing allignments that have to take a sub optimal path to reach there position in the
+    scoring matrix. Then, by tracing back from the highest score in the whole matrix we find the best
+    local alignment instead of forcing the alignment to end at the end of the two sequences.
+*/
+
+pub fn smith_waterman(seq1: &[u8], seq2: &[u8], params: &ScoringSystem) -> Result<Alignment, String> {
+    //TODO: switch return type to be a u8 instead of string since RUst has strings encoded in utf8
+    //      which is more complexity than makes sense for fasta since it's ASCII encoded
+
+    // Get the value of every parameter needed from the param struct
+    // if is not provided return Err(String(message)) to be printed by main
+    let match_s = params
+        .match_score()
+        .ok_or("Missing match score parameter".to_string())?;
+    let mismatch = params
+        .mismatch_score()
+        .ok_or("Missing mismatch score parameter".to_string())?;
+    let gap_open = params
+        .gap_open_score()
+        .ok_or("Missing gap open score parameter".to_string())?;
+    let gap_extend = params
+        .gap_extend_score()
+        .ok_or("Missing gap extend score parameter".to_string())?;
+
+    let mut alignment_seq1 = String::new();
+    let mut alignment_seq2 = String::new();
+    let mut optimal_score = 0;
+
+    let (m, n) = (seq1.len(), seq2.len());
+    let (mut max_index_i, mut max_index_j) = (0, 0);
+
+    if m == 0 || n == 0 {return Err("One or both of the sequences is empty".to_string())}
+
+    let mut scores = vec![vec![MDICell::default(); n + 1]; m + 1];
+
+    // Populate score matrix
+    scores[0][0].m_score = 0;
+    scores[0][0].d_score = 0;
+    scores[0][0].i_score = 0;
+
+    for i in 1..=m {
+        scores[i][0].d_score = 0;
+    }
+
+    for j in 1..=n {
+        scores[0][j].i_score = 0;
+    }
+
+
+    for i in 1..=m {
+        for j in 1..=n {
+            let match_mismatch_score = if seq1[i - 1] == seq2[j - 1] {
+                match_s
+            } else {
+                mismatch
+            };
+
+            //Somehow this is the cleanest way to get the max of threes expressions
+            scores[i][j].m_score = *[
+                scores[i - 1][j - 1].m_score + match_mismatch_score,
+                scores[i - 1][j - 1].d_score + match_mismatch_score,
+                scores[i - 1][j - 1].i_score + match_mismatch_score,
+                0, 
+            ]
+            .iter()
+            .max()
+            .unwrap();
+
+            scores[i][j].d_score = cmp::max(
+                scores[i - 1][j].m_score + gap_open,
+                scores[i - 1][j].d_score + gap_extend,
+            );
+
+            scores[i][j].i_score = cmp::max(
+                scores[i][j - 1].m_score + gap_open,
+                scores[i][j - 1].i_score + gap_extend,
+            );
+
+            let celloptimal = *[
+                scores[i][j].m_score,
+                scores[i][j].d_score,
+                scores[i][j].i_score,
+            ]
+            .iter()
+            .max()
+            .unwrap();
+
+            if optimal_score < celloptimal{
+                optimal_score = celloptimal;
+                (max_index_i, max_index_j) = (i, j);
+            }
+        }
+    }
+
+
+    let mut current_op = [
+        scores[max_index_i][max_index_j].m_score, //0
+        scores[max_index_i][max_index_j].d_score, //1
+        scores[max_index_i][max_index_j].i_score, //2
+    ]
+    .iter()
+    .enumerate()
+    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+    .map(|(index, _)| match index {
+        0 => 'm',
+        1 => 'd',
+        2 => 'i',
+        _ => panic!("You shouldn't be able to reach this"),
+    })
+    .unwrap();
+    // Traceback Optimal Score
+
+    // Find which score had the max
+    // code for finding index of max elemnent from: https://stackoverflow.com/a/53908709
+    // I just added the match statement to make it fit my needs
+    // This works by adding all of the scores to a list, numbering them, finding the max score and
+    // returning its associated number (max_by) then mapping that to the characters.
+    // Kind of awful readability and should probably be split into multiple lines but this solution
+    // is to fun to redo
+
+    // let mut current_op = [
+    //     scores[m][n].m_score, //0
+    //     scores[m][n].d_score, //1
+    //     scores[m][n].i_score, //2
+    // ]
+    // .iter()
+    // .enumerate()
+    // .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+    // .map(|(index, _)| match index {
+    //     0 => 'm',
+    //     1 => 'd',
+    //     2 => 'i',
+    //     _ => panic!("You shouldn't be able to reach this"),
+    // })
+    // .unwrap();
+
+    //don't polute the full function scope with i and j
+    {
+        let (mut i, mut j) = (max_index_i, max_index_j);
+        'traceback : while (i > 0) && (j > 0) {     
+            match current_op{
+                'm' => {
+                    if scores[i][j].m_score == 0 { 
+                        alignment_seq1.push(seq1[i - 1] as char);
+                        alignment_seq2.push(seq2[j - 1] as char);
+
+                        break 'traceback; 
+                    }
+                }
+                
+                'd' => {
+                    if scores[i][j].d_score == 0 { 
+                        alignment_seq1.push(seq1[i - 1] as char);
+                        alignment_seq2.push('-');
+
+                        break 'traceback; 
+                    }
+                }
+
+                'i' => {
+                    if scores[i][j].i_score == 0 { 
+                        alignment_seq1.push('-');
+                        alignment_seq2.push(seq2[j - 1] as char);
+
+                        break 'traceback; 
+                    }
+                }
+
+                _ => {
+                    panic!("current_op was not a deletion, insertion, or match/mismatch")
+                }
+            }
+
+            //Add letters to sequence
+            //Check how we could have gotten here
+            //Decrement in appropriate direction and set current_op
+            match current_op {
+                'm' => {
+                    alignment_seq1.push(seq1[i - 1] as char);
+                    alignment_seq2.push(seq2[j - 1] as char);
+
+                    // Adding a constant to each of the adjacent cell preserves the relative ordering
+                    // So there really isn't a reason to do it and we can omit it as an optimization
+                    // let match_mismatch_score = if seq1[i - 1] == seq2[j - 1] {
+                    //     match_s
+                    // } else {
+                    //     mismatch
+                    // };
+
+                    let diag_cell = scores[i - 1][j - 1];
+
+                    current_op = if diag_cell.m_score >= diag_cell.i_score
+                        && diag_cell.m_score >= diag_cell.d_score
+                    {
+                        'm'
+                    } else if diag_cell.d_score >= diag_cell.i_score {
+                        'd'
+                    } else {
+                        'i'
+                    };
+
+                    i -= 1;
+                    j -= 1;
+                }
+
+                'd' => {
+                    alignment_seq1.push(seq1[i - 1] as char);
+                    alignment_seq2.push('-');
+
+                    let above_cell = scores[i - 1][j];
+
+                    //It may be more reasonable biologically to extend a gap in the case of a tie
+                    //i'm not sure though so I'g gonna leave it as is
+                    current_op = if above_cell.m_score + gap_open >= above_cell.i_score + gap_extend
+                    {
+                        'm'
+                    } else {
+                        'd'
+                    };
+
+                    i -= 1;
+                }
+
+                'i' => {
+                    alignment_seq1.push('-');
+                    alignment_seq2.push(seq2[j - 1] as char);
+
+                    let left_cell = scores[i][j - 1];
+
+                    current_op = if left_cell.m_score + gap_open >= left_cell.i_score + gap_extend {
+                        'm'
+                    } else {
+                        'i'
+                    };
+
+                    j -= 1
+                }
+
+                _ => {
+                    panic!("current_op was not a deletion, insertion, or match/mismatch")
+                }
+            }
+        }
+    } 
+    // ^^ Could be modified later to bring i and j into the greater scope as their final values here
+    // should be the indecies of where the local alignment starts in each sequence.
+
+
+    alignment_seq1 = alignment_seq1.chars().rev().collect();
+    alignment_seq2 = alignment_seq2.chars().rev().collect();
+
+    let stats = calculate_alignmnet_stats(&alignment_seq1, &alignment_seq2);
+
+    Ok(Alignment::new(
+        optimal_score,
+        alignment_seq1,
+        alignment_seq2,
+        stats,
+    ))
+}

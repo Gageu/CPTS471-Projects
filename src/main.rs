@@ -1,6 +1,6 @@
 use std::env;
 
-use aligment::gotoh;
+use aligment::{gotoh, smith_waterman};
 use utils::{parse_sequences_from_fasta, read_score_config, print_alignment, len_without_gaps};
 
 /*
@@ -79,7 +79,7 @@ fn project1() {
 
     // Args don't change, so use imutable borrow
     let fasta_file = &args[1];
-    let alg_select = &args[1];
+    let alg_select = &args[2];
     let scoring_config = if args.len() == 4 {
         args[3].clone()
     } else {
@@ -107,14 +107,17 @@ fn project1() {
         println!("\n");
     }
 
-    let gotoh_result = gotoh(
-        &sequences[0], 
-        &sequences[1], 
-        &score_system)
-        .unwrap_or_else(|e|{
-            eprintln!("{}", e);
-            std::process::exit(1);
-        });
+    print!("Alg selected {}\n", alg_select.as_str());
+    let alignmnet_result = match alg_select.as_str() {
+        "0" => gotoh(&sequences[0], &sequences[1],&score_system),
+        "1" => smith_waterman(&sequences[0], &sequences[1],&score_system),
+        _ => {
+            eprintln!("Invalid algorithm selection. Please provide <0: global, 1: local>");
+            std::process::exit(1);},
+    }.unwrap_or_else(|e|{
+        eprintln!("{}", e);
+        std::process::exit(1);
+    });
 
     println!("\nOUTPUT:");
     println!("********\n");
@@ -127,15 +130,15 @@ fn project1() {
     );
 
     println!("Sequence 1 = \"s1\", length = {} characters",
-        len_without_gaps(gotoh_result.sequence1()));
+        len_without_gaps(alignmnet_result.sequence1()));
     println!("Sequence 2 = \"s2\", length = {} characters\n",
-        len_without_gaps(gotoh_result.sequence2()));
+        len_without_gaps(alignmnet_result.sequence2()));
 
-    print_alignment(gotoh_result.sequence1(), gotoh_result.sequence2());
+    print_alignment(alignmnet_result.sequence1(), alignmnet_result.sequence2());
 
-    let stats = gotoh_result.stats();
+    let stats = alignmnet_result.stats();
     println!("Report:");
-    println!("Global optimal score = {}", gotoh_result.score());
+    println!("Global optimal score = {}", alignmnet_result.score());
     println!("\nNumber of:  matches = {}, mismatches = {}, opening gaps = {}, gap extensions = {}",
         stats.match_count(),
         stats.mismatch_count(),
