@@ -2,7 +2,7 @@
 
 use std::{cmp, fs::File, io::{BufRead, BufReader, Error}, vec};
 
-use crate::types::{AllignmentStats, ScoringSystem};
+use crate::types::{AllignmentStats, Alignment, ScoringSystem, ProjectSelection};
 
 // Helper functions (I/O stuff, file parsing, stats)
 
@@ -159,6 +159,11 @@ pub fn calculate_alignmnet_stats(seq1: &str, seq2: &str) -> AllignmentStats {
     )
 }
 
+pub fn assemble_alignment(score: i32, s1: String, s2: String) -> Alignment {
+    let stats = calculate_alignmnet_stats(&s1, &s2);
+    Alignment::new(score, s1, s2, stats)
+}
+
 // Print two sequences as described by the assignment description
 // bars connecting matches, index at end of every line and wrpeed every 60 characters
 pub fn print_alignment(seq1: &str, seq2: &str) {
@@ -199,3 +204,103 @@ pub fn len_without_gaps(seq: &str) -> i32{
     .filter(|c| *c != '-')
     .count() as i32
 }
+
+pub fn parse_args() -> Result<ProjectSelection, String> {
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.len() < 2 {
+        return Err("Not enough arguments. Use --p1 or provide input for the latest project.".to_string());
+    }
+
+    print!("{}", args[1]);
+
+    if args[1] == "--p1" {
+        if args.len() < 4 || args.len() > 5 {
+            return Err("Usage for project 1: <program> --p1 <fasta_file> <algorithm_select> [score_config_file]".to_string());
+        }
+
+        let fasta_file = args[2].clone();
+        let alg_select = args[3].clone();
+        let config_file = if args.len() == 5 {
+            args[4].clone()
+        } else {
+            "./parameters.config".to_string()
+        };
+
+        Ok(ProjectSelection::Project1 {
+            fasta_file,
+            alg_select,
+            config_file,
+        })
+    } else {
+        if args.len() != 3 {
+            return Err("Usage for project 2 (default): <program> <fasta_file> <alphabet_file>".to_string());
+        }
+
+        let fasta_file = args[1].clone();
+        let alphabet_file = args[2].clone();
+
+        Ok(ProjectSelection::Project2 {
+            fasta_file,
+            alphabet_file,
+        })
+    }
+}
+
+
+pub fn print_sequences(sequences: &[Vec<u8>]) {
+    for (i, sequence) in sequences.iter().enumerate() {
+        println!(">s{}", i + 1);
+        for &byte in sequence {
+            print!("{}", byte as char);
+        }
+        println!("\n");
+    }
+}
+
+
+pub fn print_alignment_summary(alignment: &Alignment, scoring: &ScoringSystem) {
+    println!("\nOUTPUT:");
+    println!("********\n");
+
+    println!(
+        "Scores:    match = {}, mismatch = {}, h = {}, g = {}\n",
+        scoring.match_score().unwrap(),
+        scoring.mismatch_score().unwrap(),
+        scoring.gap_open_score().unwrap(),
+        scoring.gap_extend_score().unwrap()
+    );
+
+    println!(
+        "Sequence 1 = \"s1\", length = {} characters",
+        len_without_gaps(alignment.sequence1())
+    );
+    println!(
+        "Sequence 2 = \"s2\", length = {} characters\n",
+        len_without_gaps(alignment.sequence2())
+    );
+
+    print_alignment(alignment.sequence1(), alignment.sequence2());
+
+    let stats = alignment.stats();
+    println!("Report:");
+    println!("Global optimal score = {}", alignment.score());
+    println!(
+        "\nNumber of:  matches = {}, mismatches = {}, opening gaps = {}, gap extensions = {}",
+        stats.match_count(),
+        stats.mismatch_count(),
+        stats.gap_open_count(),
+        stats.gap_extend_count()
+    );
+
+    println!(
+        "\nIdentities = {}/{} ({}%), Gaps = {}/{} ({}%)",
+        stats.match_count(),
+        stats.alignment_length(),
+        stats.identity_percent(),
+        stats.total_gaps(),
+        stats.alignment_length(),
+        (stats.total_gaps() as f32 / stats.alignment_length() as f32 * 100.0).round()
+    );
+}
+

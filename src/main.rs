@@ -1,7 +1,8 @@
 use std::env;
 
 use aligment::{gotoh, smith_waterman};
-use utils::{parse_sequences_from_fasta, read_score_config, print_alignment, len_without_gaps};
+use types::{ProjectSelection};
+use utils::{parse_sequences_from_fasta, read_score_config, print_alignment, len_without_gaps, print_sequences, print_alignment_summary};
 
 /*
    -------- Project Structure ---------
@@ -10,6 +11,7 @@ use utils::{parse_sequences_from_fasta, read_score_config, print_alignment, len_
    |-- main.rs          # Main logic for each assignment (funtions for each project that get called by main (i.e. project1(); project2(); etc... )
    |-- types.rs         # Structs and types used across projects
    |-- alignment.rs     # Alignment algorithms
+   |-- suffix_trees.rs  # Suffix tree creation and algorithms that use suffix trees
    |-- utils.rs         # Helper functions (I/O stuff, file parsing, stats)
 */
 
@@ -23,8 +25,21 @@ mod utils;
 //-------------------
 
 fn main() {
-    project1();
+    match utils::parse_args() {
+        Ok(ProjectSelection::Project1 { fasta_file, alg_select, config_file }) => {
+            project1(&fasta_file, &alg_select, &config_file)
+        }
+        Ok(ProjectSelection::Project2 { fasta_file, alphabet_file }) => {
+            //project2_Suffix_Trees(&fasta_file, &alphabet_file)
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    }
 }
+
+
 
 /*
 PROJECT 1:
@@ -69,89 +84,50 @@ Gotoh Alg:
 
 */
 
-fn project1() {
+fn project1(fasta_file: &str, alg_select: &str, config_file: &str) {
 
-    let args: Vec<String> = env::args().collect();
-    
-    if args.len() < 3 || args.len() > 4 {
-        eprintln!("Incorrect number of arguments provided");
-    }
-
-    // Args don't change, so use imutable borrow
-    let fasta_file = &args[1];
-    let alg_select = &args[2];
-    let scoring_config = if args.len() == 4 {
-        args[3].clone()
-    } else {
-        "./parameters.config".to_string()
-    };
 
     println!("INPUT:");
     println!("******\n");
-    
-    let score_system = match read_score_config(&scoring_config) {
+
+    let score_system = match read_score_config(config_file) {
         Ok(sys) => sys,
-        Err(e) => return // fix later with proper error handling
-    };
-
-    let sequences = match parse_sequences_from_fasta(&fasta_file){
-        Ok(seq) => seq,
-        Err(e) => return // fix later with proper error handling
-    };
-
-    for (i, sequence) in sequences.iter().enumerate() {
-        println!(">s{}", i + 1);
-        for &byte in sequence {
-            print!("{}", byte as char);
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
         }
-        println!("\n");
-    }
+    };
 
-    print!("Alg selected {}\n", alg_select.as_str());
-    let alignmnet_result = match alg_select.as_str() {
-        "0" => gotoh(&sequences[0], &sequences[1],&score_system),
-        "1" => smith_waterman(&sequences[0], &sequences[1],&score_system),
+    let sequences = match parse_sequences_from_fasta(fasta_file) {
+        Ok(seq) => seq,
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    };
+
+    print_sequences(&sequences);
+
+    println!("Alg selected {}\n", alg_select);
+
+    let alignmnet_result = match alg_select {
+        "0" => gotoh(&sequences[0], &sequences[1], &score_system),
+        "1" => smith_waterman(&sequences[0], &sequences[1], &score_system),
         _ => {
             eprintln!("Invalid algorithm selection. Please provide <0: global, 1: local>");
-            std::process::exit(1);},
-    }.unwrap_or_else(|e|{
+            std::process::exit(1);
+        }
+    }
+    .unwrap_or_else(|e| {
         eprintln!("{}", e);
         std::process::exit(1);
     });
 
-    println!("\nOUTPUT:");
-    println!("********\n");
-    
-    println!("Scores:    match = {}, mismatch = {}, h = {}, g = {}\n",
-        score_system.match_score().unwrap(),
-        score_system.mismatch_score().unwrap(),
-        score_system.gap_open_score().unwrap(),
-        score_system.gap_extend_score().unwrap()
-    );
+    print_alignment_summary(&alignmnet_result, &score_system);
+}
 
-    println!("Sequence 1 = \"s1\", length = {} characters",
-        len_without_gaps(alignmnet_result.sequence1()));
-    println!("Sequence 2 = \"s2\", length = {} characters\n",
-        len_without_gaps(alignmnet_result.sequence2()));
 
-    print_alignment(alignmnet_result.sequence1(), alignmnet_result.sequence2());
 
-    let stats = alignmnet_result.stats();
-    println!("Report:");
-    println!("Global optimal score = {}", alignmnet_result.score());
-    println!("\nNumber of:  matches = {}, mismatches = {}, opening gaps = {}, gap extensions = {}",
-        stats.match_count(),
-        stats.mismatch_count(),
-        stats.gap_open_count(),
-        stats.gap_extend_count()
-    );
+fn project2_Suffix_Trees(){
 
-    println!("\nIdentities = {}/{} ({}%), Gaps = {}/{} ({}%)",
-    stats.match_count(),
-    stats.alignment_length(),
-    stats.identity_percent(),
-    stats.total_gaps(),
-    stats.alignment_length(),
-    (stats.total_gaps() as f32 / stats.alignment_length() as f32 * 100.0).round()
-    );
 }

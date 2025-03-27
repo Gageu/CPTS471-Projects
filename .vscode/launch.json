@@ -20,7 +20,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["./test_files/Opsin1_colorblindness_gene.fasta", "1", "./test_files/parameters.config"],
+            "args": ["--p1", "./test_files/Opsin1_colorblindness_gene.fasta", "1", "./test_files/parameters.config"],
             "cwd": "${workspaceFolder}"
         },
         {

@@ -1,6 +1,6 @@
 //types.rs
 
-use std::default;
+use std::{collections::BTreeMap, default};
 
 pub enum GeneOperations {
     
@@ -113,6 +113,39 @@ impl MDICell{
             i_score: i32::MIN / 2,
         }
     }
+
+    pub fn best_op(&self) -> char {
+        if self.m_score >= self.d_score && self.m_score >= self.i_score {
+            'm'
+        } else if self.d_score >= self.i_score {
+            'd'
+        } else {
+            'i'
+        }
+    }
+
+    pub fn default_matrix(
+        m: usize,
+        n: usize,
+        init_cell: i32,
+        init_left: i32,
+        init_top: i32,
+    ) -> Vec<Vec<MDICell>> {
+        let mut matrix = vec![vec![MDICell::default(); n + 1]; m + 1];
+        matrix[0][0].m_score = init_cell;
+        matrix[0][0].d_score = init_cell;
+        matrix[0][0].i_score = init_cell;
+
+        for i in 1..=m {
+            matrix[i][0].d_score = init_left;
+        }
+
+        for j in 1..=n {
+            matrix[0][j].i_score = init_top;
+        }
+
+        matrix
+    }
 }
 
 
@@ -153,4 +186,41 @@ impl ScoringSystem {
         self.gap_extend_score
     }
     //--------------------------------
+
+
+    pub fn unpack(&self) -> Result<(i32, i32, i32, i32), String> {
+        Ok((
+            self.match_score().ok_or("Missing match score")?,
+            self.mismatch_score().ok_or("Missing mismatch score")?,
+            self.gap_open_score().ok_or("Missing gap open score")?,
+            self.gap_extend_score().ok_or("Missing gap extend score")?,
+        ))
+    }
+}
+
+pub enum ProjectSelection {
+    Project1 {
+        fasta_file: String,
+        alg_select: String,
+        config_file: String,
+    },
+    Project2 {
+        fasta_file: String,
+        alphabet_file: String,
+    },
+}
+
+
+pub struct ST_Node {
+    pub id: usize,
+    pub parent: Option<usize>,
+    pub suffix_link: Option<usize>,
+    pub children: BTreeMap<char, ST_Edge>,
+    pub string_depth: usize,
+}
+
+pub struct ST_Edge {
+    pub start: usize,
+    pub end: usize,
+    pub target_node: usize,
 }
