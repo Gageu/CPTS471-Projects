@@ -1,11 +1,16 @@
 //utils.rs
 use std::collections::HashMap;
-use std::{cmp, fs::File, io::{BufRead, BufReader, Error}, vec};
+use std::{
+    cmp,
+    fs::File,
+    io::{BufRead, BufReader, Error},
+    vec,
+};
 
 use crate::suffix_tree::{StEdge, StNode, SuffixTree};
-use crate::types::{AllignmentStats, Alignment, ScoringSystem, ProjectSelection};
+use crate::types::{Alignment, AllignmentStats, ProjectSelection, ScoringSystem};
 
-use std::io::{Write, Result as IoResult};
+use std::io::{Result as IoResult, Write};
 
 // ------------------------ Universal ---------------------------
 
@@ -13,7 +18,9 @@ pub fn parse_args() -> Result<ProjectSelection, String> {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
-        return Err("Not enough arguments. Use --p1 or provide input for the latest project.".to_string());
+        return Err(
+            "Not enough arguments. Use --p1 or provide input for the latest project.".to_string(),
+        );
     }
 
     print!("{}", args[1]);
@@ -38,7 +45,9 @@ pub fn parse_args() -> Result<ProjectSelection, String> {
         })
     } else {
         if args.len() != 3 {
-            return Err("Usage for project 2 (default): <program> <fasta_file> <alphabet_file>".to_string());
+            return Err(
+                "Usage for project 2 (default): <program> <fasta_file> <alphabet_file>".to_string(),
+            );
         }
 
         let fasta_file = args[1].clone();
@@ -52,7 +61,7 @@ pub fn parse_args() -> Result<ProjectSelection, String> {
 }
 
 // Read all sequences from fasta gile
-pub fn parse_sequences_from_fasta(filename: &str) -> Result<Vec<Vec<u8>>, Error>{
+pub fn parse_sequences_from_fasta(filename: &str) -> Result<Vec<Vec<u8>>, Error> {
     let file = BufReader::new(File::open(filename)?);
     let mut sequences: Vec<Vec<u8>> = vec![];
     let mut current_sequence: Vec<u8> = vec![];
@@ -61,26 +70,21 @@ pub fn parse_sequences_from_fasta(filename: &str) -> Result<Vec<Vec<u8>>, Error>
         let line = line?;
         let trimmed = line.trim();
 
-        
-        if trimmed.is_empty(){
+        if trimmed.is_empty() {
             continue;
         }
 
-        if trimmed.starts_with('>'){
-            if !current_sequence.is_empty(){
+        if trimmed.starts_with('>') {
+            if !current_sequence.is_empty() {
                 sequences.push(current_sequence);
                 current_sequence = vec![];
             }
         } else {
-            current_sequence.extend(
-                trimmed
-                .bytes()
-                .filter(|byte| !byte.is_ascii_whitespace())
-            );
+            current_sequence.extend(trimmed.bytes().filter(|byte| !byte.is_ascii_whitespace()));
         }
     }
 
-    if !current_sequence.is_empty(){
+    if !current_sequence.is_empty() {
         sequences.push(current_sequence);
     }
 
@@ -89,36 +93,36 @@ pub fn parse_sequences_from_fasta(filename: &str) -> Result<Vec<Vec<u8>>, Error>
 // --------------------------------------------------------------
 
 // ------------------------ Project 1 ---------------------------
-pub fn read_score_config(filename: &str) -> Result<ScoringSystem, String>{
+pub fn read_score_config(filename: &str) -> Result<ScoringSystem, String> {
     /* TODO:
-        - Handle case where there is only a gap penalty specified and not seperate extend and open scores
-     */
+       - Handle case where there is only a gap penalty specified and not seperate extend and open scores
+    */
 
     let file = match File::open(filename) {
         Ok(file) => file,
-        Err(e) => return Err(e.to_string())
+        Err(e) => return Err(e.to_string()),
     };
     let reader = BufReader::new(file);
-    
+
     let mut match_score = None;
     let mut mismatch_score = None;
     let mut gap_open_score = None;
     let mut gap_extend_score = None;
-    
+
     for line in reader.lines() {
         let line = line.map_err(|e| e.to_string())?;
         let parts: Vec<&str> = line.split_whitespace().collect();
-        
+
         if parts.len() < 2 {
             continue;
         }
-        
+
         let param_name = parts[0];
         let value = match parts[1].parse::<i32>() {
             Ok(val) => val,
-            Err(e) => return Err(e.to_string())
+            Err(e) => return Err(e.to_string()),
         };
-        
+
         match param_name {
             "match" => match_score = Some(value),
             "mismatch" => mismatch_score = Some(value),
@@ -127,14 +131,14 @@ pub fn read_score_config(filename: &str) -> Result<ScoringSystem, String>{
             _ => {}
         }
     }
-    
+
     Ok(ScoringSystem::new(
-        match_score, 
-        mismatch_score, 
-        None, 
-        gap_open_score, 
-        gap_extend_score)
-    )
+        match_score,
+        mismatch_score,
+        None,
+        gap_open_score,
+        gap_extend_score,
+    ))
 }
 
 // Allignment stats
@@ -188,9 +192,7 @@ pub fn calculate_alignmnet_stats(seq1: &str, seq2: &str) -> AllignmentStats {
         }
     }
 
-    let alignment_length = cmp::max(
-        len_without_gaps(seq1),
-        len_without_gaps(seq2));
+    let alignment_length = cmp::max(len_without_gaps(seq1), len_without_gaps(seq2));
 
     let identity_percent = (match_count as f32 / alignment_length as f32) * 100.0;
 
@@ -215,16 +217,17 @@ pub fn assemble_alignment(score: i32, s1: String, s2: String) -> Alignment {
 pub fn print_alignment(seq1: &str, seq2: &str) {
     let len = seq1.len();
     let line_size = 60;
-    
+
     for line_start in (0..len).step_by(line_size) {
         let line_end = std::cmp::min(line_start + line_size, len);
-        
-        println!("s1 {:<5} {} {}", 
+
+        println!(
+            "s1 {:<5} {} {}",
             line_start + 1,
             &seq1[line_start..line_end],
             line_end
         );
-        
+
         //Allign the middle bar
         print!("         ");
         for i in line_start..line_end {
@@ -236,8 +239,9 @@ pub fn print_alignment(seq1: &str, seq2: &str) {
             }
         }
         println!();
-        
-        println!("s2 {:<5} {} {}\n", 
+
+        println!(
+            "s2 {:<5} {} {}\n",
             line_start + 1,
             &seq2[line_start..line_end],
             line_end
@@ -245,12 +249,9 @@ pub fn print_alignment(seq1: &str, seq2: &str) {
     }
 }
 
-pub fn len_without_gaps(seq: &str) -> i32{
-    seq.chars()
-    .filter(|c| *c != '-')
-    .count() as i32
+pub fn len_without_gaps(seq: &str) -> i32 {
+    seq.chars().filter(|c| *c != '-').count() as i32
 }
-
 
 pub fn print_sequences(sequences: &[Vec<u8>]) {
     for (i, sequence) in sequences.iter().enumerate() {
@@ -261,7 +262,6 @@ pub fn print_sequences(sequences: &[Vec<u8>]) {
         println!("\n");
     }
 }
-
 
 pub fn print_alignment_summary(alignment: &Alignment, scoring: &ScoringSystem) {
     println!("\nOUTPUT:");
@@ -315,7 +315,7 @@ pub fn parse_alphabet(filename: &str) -> Result<HashMap<char, usize>, String> {
 
     let mut alphabet: Vec<char> = content
         .split_whitespace()
-        .map(|s| s.chars().next().unwrap())  // assumes each symbol is a single char
+        .map(|s| s.chars().next().unwrap()) // assumes each symbol is a single char
         .collect();
 
     // Make sure that $ is at the end of the alphabet
@@ -333,8 +333,6 @@ pub fn parse_alphabet(filename: &str) -> Result<HashMap<char, usize>, String> {
     Ok(order)
 }
 
-
-
 pub fn write_vector_formatted<T: std::fmt::Display>(
     data: &[T],
     line_width: usize,
@@ -342,6 +340,7 @@ pub fn write_vector_formatted<T: std::fmt::Display>(
 ) -> IoResult<()> {
     for (i, item) in data.iter().enumerate() {
         write!(writer, "{:<3} ", item)?;
+
         if (i + 1) % line_width == 0 {
             writeln!(writer)?;
         }
@@ -352,69 +351,73 @@ pub fn write_vector_formatted<T: std::fmt::Display>(
     Ok(())
 }
 
-
 pub fn calculate_tree_memory_usage(tree: &SuffixTree) -> usize {
-    // Base struct size
     let mut total_size = std::mem::size_of::<SuffixTree>();
-    
-    // Size of nodes vector capacity
     total_size += tree.nodes.capacity() * std::mem::size_of::<StNode>();
-    
-    // Size of each node's children vectors
+
     for node in &tree.nodes {
         total_size += node.children.capacity() * std::mem::size_of::<(char, StEdge)>();
     }
-    
+
     total_size
 }
 
-
 // Function to generate a comprehensive analysis report
-pub fn generate_comprehensive_report(
+pub fn generate_report(
     file: &mut File,
     fasta_file: &str,
     tree: &SuffixTree,
     seq: &[u8],
-    construction_time: std::time::Duration
+    construction_time: std::time::Duration,
 ) -> IoResult<()> {
-
-    // 1. Write header
+    // Header
     writeln!(file, "SUFFIX TREE ANALYSIS REPORT")?;
     writeln!(file, "==========================")?;
     writeln!(file, "Input file: {}", fasta_file)?;
     writeln!(file, "Sequence length: {} bytes", seq.len())?;
     writeln!(file, "Construction time: {:?}", construction_time)?;
     writeln!(file, "")?;
-    
-    // 2. Write tree statistics
-    crate::suffix_tree::write_tree_stats_to_file(tree, fasta_file, file)?;
-    
-    // 3. Write longest repeat information
-    crate::suffix_tree::write_longest_repeat_to_file(tree, seq, file)?;
-    
-    // 4. Write memory usage statistics
+
+    // Stats
+    crate::suffix_tree::write_tree_stats(tree, fasta_file, file)?;
+
+    crate::suffix_tree::longest_repeat_to_file(tree, seq, file)?;
+
     let tree_size = calculate_tree_memory_usage(tree);
     let implementation_constant = (tree_size as f64) / (seq.len() as f64);
-    
+
     writeln!(file, "\nMemory Usage:")?;
     writeln!(file, "Input sequence length: {} bytes", seq.len())?;
     writeln!(file, "Suffix tree size: {} bytes", tree_size)?;
-    writeln!(file, "Implementation constant: {:.2} bytes per input byte", implementation_constant)?;
-    
+    writeln!(
+        file,
+        "Implementation constant: {:.2} bytes per input byte",
+        implementation_constant
+    )?;
+
     Ok(())
 }
 
-// Function to print a minimal summary to console
-pub fn print_minimal_summary(
+pub fn print_tree_summary(
     tree: &SuffixTree,
     seq_len: usize,
-    construction_time: std::time::Duration
+    construction_time: std::time::Duration,
 ) {
-    let internal_count = tree.nodes.iter().filter(|node| !node.children.is_empty()).count();
+    let internal_count = tree
+        .nodes
+        .iter()
+        .filter(|node| !node.children.is_empty())
+        .count();
+
     let leaf_count = tree.nodes.len() - internal_count;
-    
+
     println!("Suffix tree constructed in {:?}", construction_time);
-    println!("Tree size: {} nodes ({} internal, {} leaves)", tree.nodes.len(), internal_count, leaf_count);
+    println!(
+        "Tree size: {} nodes ({} internal, {} leaves)",
+        tree.nodes.len(),
+        internal_count,
+        leaf_count
+    );
     println!("Sequence length: {} bytes", seq_len);
 }
 
