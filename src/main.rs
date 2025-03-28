@@ -1,9 +1,10 @@
-use std::env;
-
+use std::{fs::File};
 use aligment::{gotoh, smith_waterman};
-use types::{ProjectSelection};
-use utils::{parse_sequences_from_fasta, read_score_config, print_alignment, len_without_gaps, print_sequences, print_alignment_summary};
-
+use mccreight::construct_st_mc;
+use types::ProjectSelection;
+use utils::{
+    parse_args, parse_sequences_from_fasta, print_alignment_summary, print_sequences, read_score_config
+};
 /*
    -------- Project Structure ---------
 
@@ -17,6 +18,8 @@ use utils::{parse_sequences_from_fasta, read_score_config, print_alignment, len_
 
 // Modules ----------
 mod aligment;
+mod suffix_tree;
+mod mccreight;
 mod types;
 mod utils;
 //-------------------
@@ -25,12 +28,12 @@ mod utils;
 //-------------------
 
 fn main() {
-    match utils::parse_args() {
+    match parse_args() {
         Ok(ProjectSelection::Project1 { fasta_file, alg_select, config_file }) => {
             project1(&fasta_file, &alg_select, &config_file)
         }
         Ok(ProjectSelection::Project2 { fasta_file, alphabet_file }) => {
-            //project2_Suffix_Trees(&fasta_file, &alphabet_file)
+            project2_suffix_trees(&fasta_file, &alphabet_file)
         }
         Err(e) => {
             eprintln!("{}", e);
@@ -127,7 +130,103 @@ fn project1(fasta_file: &str, alg_select: &str, config_file: &str) {
 }
 
 
+fn project2_suffix_trees(fasta_file: &str, alphabet_file: &str) {
+    // Parse the input files
+    let sequences = match utils::parse_sequences_from_fasta(fasta_file) {
+        Ok(seq) => seq,
+        Err(e) => {
+            eprintln!("Error reading FASTA file: {}", e);
+            std::process::exit(1);
+        }
+    };
 
-fn project2_Suffix_Trees(){
+    if sequences.is_empty() {
+        eprintln!("No sequence found in FASTA file.");
+        std::process::exit(1);
+    }
 
+    let alphabet_order = match utils::parse_alphabet(alphabet_file) {
+        Ok(map) => map,
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    };
+    
+    // Prepare output directory and file paths
+    let path = std::path::Path::new(fasta_file);
+    let file_stem = path.file_stem().unwrap_or_default().to_string_lossy();
+    
+    let output_dir = format!("output/{}_analysis", file_stem);
+    
+    // Create output directory structure
+    if let Err(e) = std::fs::create_dir_all(&output_dir) {
+        eprintln!("Error creating output directory: {}", e);
+    }
+    
+    let report_path = format!("{}/report.txt", output_dir);
+    let dfs_path = format!("{}/dfs_output.txt", output_dir);
+    let postorder_path = format!("{}/postorder_output.txt", output_dir);
+    let bwt_path = format!("{}/BWT.txt", output_dir);
+    
+    // Build the suffix tree
+    println!("Building suffix tree...");
+    let start_time = std::time::Instant::now();
+    let tree = construct_st_mc(&sequences[0], &alphabet_order);
+    let construction_time = start_time.elapsed();
+    
+    // Print minimal summary to console
+    utils::print_minimal_summary(&tree, sequences[0].len(), construction_time);
+    
+    // Generate comprehensive report
+    match File::create(&report_path) {
+        Ok(mut file) => {
+            if let Err(e) = utils::generate_comprehensive_report(
+                &mut file, fasta_file, &tree, &sequences[0], construction_time
+            ) {
+                eprintln!("Error writing report: {}", e);
+            } else {
+                println!("Report written to {}", report_path);
+            }
+        },
+        Err(e) => eprintln!("Error creating report file: {}", e)
+    }
+    
+    // Write DFS output
+    match File::create(&dfs_path) {
+        Ok(mut file) => {
+            if let Err(e) = suffix_tree::write_dfs_to_file(&tree, &alphabet_order, &mut file) {
+                eprintln!("Error writing DFS output: {}", e);
+            } else {
+                println!("DFS output written to {}", dfs_path);
+            }
+        },
+        Err(e) => eprintln!("Error creating DFS file: {}", e)
+    }
+    
+    // Write postorder output
+    match File::create(&postorder_path) {
+        Ok(mut file) => {
+            if let Err(e) = suffix_tree::write_postorder_to_file(&tree, &alphabet_order, &mut file) {
+                eprintln!("Error writing postorder output: {}", e);
+            } else {
+                println!("Postorder output written to {}", postorder_path);
+            }
+        },
+        Err(e) => eprintln!("Error creating postorder file: {}", e)
+    }
+    
+    // Write BWT output
+    match File::create(&bwt_path) {
+        Ok(mut file) => {
+            if let Err(e) = suffix_tree::write_bwt_to_file(&tree, &sequences[0], &mut file) {
+                eprintln!("Error writing BWT: {}", e);
+            } else {
+                println!("BWT written to {}", bwt_path);
+            }
+        },
+        Err(e) => eprintln!("Error creating BWT file: {}", e)
+    }
+    
+    println!("All outputs saved to directory: {}", output_dir);
 }

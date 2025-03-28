@@ -1,10 +1,55 @@
 //utils.rs
-
+use std::collections::HashMap;
 use std::{cmp, fs::File, io::{BufRead, BufReader, Error}, vec};
 
+use crate::suffix_tree::{StEdge, StNode, SuffixTree};
 use crate::types::{AllignmentStats, Alignment, ScoringSystem, ProjectSelection};
 
-// Helper functions (I/O stuff, file parsing, stats)
+use std::io::{Write, Result as IoResult};
+
+// ------------------------ Universal ---------------------------
+
+pub fn parse_args() -> Result<ProjectSelection, String> {
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.len() < 2 {
+        return Err("Not enough arguments. Use --p1 or provide input for the latest project.".to_string());
+    }
+
+    print!("{}", args[1]);
+
+    if args[1] == "--p1" {
+        if args.len() < 4 || args.len() > 5 {
+            return Err("Usage for project 1: <program> --p1 <fasta_file> <algorithm_select> [score_config_file]".to_string());
+        }
+
+        let fasta_file = args[2].clone();
+        let alg_select = args[3].clone();
+        let config_file = if args.len() == 5 {
+            args[4].clone()
+        } else {
+            "./parameters.config".to_string()
+        };
+
+        Ok(ProjectSelection::Project1 {
+            fasta_file,
+            alg_select,
+            config_file,
+        })
+    } else {
+        if args.len() != 3 {
+            return Err("Usage for project 2 (default): <program> <fasta_file> <alphabet_file>".to_string());
+        }
+
+        let fasta_file = args[1].clone();
+        let alphabet_file = args[2].clone();
+
+        Ok(ProjectSelection::Project2 {
+            fasta_file,
+            alphabet_file,
+        })
+    }
+}
 
 // Read all sequences from fasta gile
 pub fn parse_sequences_from_fasta(filename: &str) -> Result<Vec<Vec<u8>>, Error>{
@@ -41,8 +86,9 @@ pub fn parse_sequences_from_fasta(filename: &str) -> Result<Vec<Vec<u8>>, Error>
 
     Ok(sequences)
 }
+// --------------------------------------------------------------
 
-// Init scoring params
+// ------------------------ Project 1 ---------------------------
 pub fn read_score_config(filename: &str) -> Result<ScoringSystem, String>{
     /* TODO:
         - Handle case where there is only a gap penalty specified and not seperate extend and open scores
@@ -205,48 +251,6 @@ pub fn len_without_gaps(seq: &str) -> i32{
     .count() as i32
 }
 
-pub fn parse_args() -> Result<ProjectSelection, String> {
-    let args: Vec<String> = std::env::args().collect();
-
-    if args.len() < 2 {
-        return Err("Not enough arguments. Use --p1 or provide input for the latest project.".to_string());
-    }
-
-    print!("{}", args[1]);
-
-    if args[1] == "--p1" {
-        if args.len() < 4 || args.len() > 5 {
-            return Err("Usage for project 1: <program> --p1 <fasta_file> <algorithm_select> [score_config_file]".to_string());
-        }
-
-        let fasta_file = args[2].clone();
-        let alg_select = args[3].clone();
-        let config_file = if args.len() == 5 {
-            args[4].clone()
-        } else {
-            "./parameters.config".to_string()
-        };
-
-        Ok(ProjectSelection::Project1 {
-            fasta_file,
-            alg_select,
-            config_file,
-        })
-    } else {
-        if args.len() != 3 {
-            return Err("Usage for project 2 (default): <program> <fasta_file> <alphabet_file>".to_string());
-        }
-
-        let fasta_file = args[1].clone();
-        let alphabet_file = args[2].clone();
-
-        Ok(ProjectSelection::Project2 {
-            fasta_file,
-            alphabet_file,
-        })
-    }
-}
-
 
 pub fn print_sequences(sequences: &[Vec<u8>]) {
     for (i, sequence) in sequences.iter().enumerate() {
@@ -304,3 +308,114 @@ pub fn print_alignment_summary(alignment: &Alignment, scoring: &ScoringSystem) {
     );
 }
 
+// ------------------------ Project 2 ---------------------------
+pub fn parse_alphabet(filename: &str) -> Result<HashMap<char, usize>, String> {
+    let content = std::fs::read_to_string(filename)
+        .map_err(|e| format!("Error reading alphabet file: {}", e))?;
+
+    let mut alphabet: Vec<char> = content
+        .split_whitespace()
+        .map(|s| s.chars().next().unwrap())  // assumes each symbol is a single char
+        .collect();
+
+    // Make sure that $ is at the end of the alphabet
+    if let Some(pos) = alphabet.iter().position(|&c| c == '$') {
+        alphabet.remove(pos);
+    }
+
+    alphabet.push('$');
+
+    let mut order = HashMap::new();
+    for (i, ch) in alphabet.iter().enumerate() {
+        order.insert(*ch, i);
+    }
+
+    Ok(order)
+}
+
+
+
+pub fn write_vector_formatted<T: std::fmt::Display>(
+    data: &[T],
+    line_width: usize,
+    mut writer: impl Write,
+) -> IoResult<()> {
+    for (i, item) in data.iter().enumerate() {
+        write!(writer, "{:<3} ", item)?;
+        if (i + 1) % line_width == 0 {
+            writeln!(writer)?;
+        }
+    }
+    if data.len() % line_width != 0 {
+        writeln!(writer)?;
+    }
+    Ok(())
+}
+
+
+pub fn calculate_tree_memory_usage(tree: &SuffixTree) -> usize {
+    // Base struct size
+    let mut total_size = std::mem::size_of::<SuffixTree>();
+    
+    // Size of nodes vector capacity
+    total_size += tree.nodes.capacity() * std::mem::size_of::<StNode>();
+    
+    // Size of each node's children vectors
+    for node in &tree.nodes {
+        total_size += node.children.capacity() * std::mem::size_of::<(char, StEdge)>();
+    }
+    
+    total_size
+}
+
+
+// Function to generate a comprehensive analysis report
+pub fn generate_comprehensive_report(
+    file: &mut File,
+    fasta_file: &str,
+    tree: &SuffixTree,
+    seq: &[u8],
+    construction_time: std::time::Duration
+) -> IoResult<()> {
+
+    // 1. Write header
+    writeln!(file, "SUFFIX TREE ANALYSIS REPORT")?;
+    writeln!(file, "==========================")?;
+    writeln!(file, "Input file: {}", fasta_file)?;
+    writeln!(file, "Sequence length: {} bytes", seq.len())?;
+    writeln!(file, "Construction time: {:?}", construction_time)?;
+    writeln!(file, "")?;
+    
+    // 2. Write tree statistics
+    crate::suffix_tree::write_tree_stats_to_file(tree, fasta_file, file)?;
+    
+    // 3. Write longest repeat information
+    crate::suffix_tree::write_longest_repeat_to_file(tree, seq, file)?;
+    
+    // 4. Write memory usage statistics
+    let tree_size = calculate_tree_memory_usage(tree);
+    let implementation_constant = (tree_size as f64) / (seq.len() as f64);
+    
+    writeln!(file, "\nMemory Usage:")?;
+    writeln!(file, "Input sequence length: {} bytes", seq.len())?;
+    writeln!(file, "Suffix tree size: {} bytes", tree_size)?;
+    writeln!(file, "Implementation constant: {:.2} bytes per input byte", implementation_constant)?;
+    
+    Ok(())
+}
+
+// Function to print a minimal summary to console
+pub fn print_minimal_summary(
+    tree: &SuffixTree,
+    seq_len: usize,
+    construction_time: std::time::Duration
+) {
+    let internal_count = tree.nodes.iter().filter(|node| !node.children.is_empty()).count();
+    let leaf_count = tree.nodes.len() - internal_count;
+    
+    println!("Suffix tree constructed in {:?}", construction_time);
+    println!("Tree size: {} nodes ({} internal, {} leaves)", tree.nodes.len(), internal_count, leaf_count);
+    println!("Sequence length: {} bytes", seq_len);
+}
+
+//--------------------------------------------------------------------------------------

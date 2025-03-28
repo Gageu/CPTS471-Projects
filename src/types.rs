@@ -209,18 +209,3 @@ pub enum ProjectSelection {
         alphabet_file: String,
     },
 }
-
-
-pub struct ST_Node {
-    pub id: usize,
-    pub parent: Option<usize>,
-    pub suffix_link: Option<usize>,
-    pub children: BTreeMap<char, ST_Edge>,
-    pub string_depth: usize,
-}
-
-pub struct ST_Edge {
-    pub start: usize,
-    pub end: usize,
-    pub target_node: usize,
-}
