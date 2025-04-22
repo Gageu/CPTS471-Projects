@@ -1,349 +1,436 @@
+// mccreight.rs
+
 use crate::suffix_tree::{StEdge, SuffixTree};
 use std::collections::HashMap;
 
-/*  McCreight's Algorithm:
-Linear time algrithm for constructing suffix tree with shortcuts
-    The algorithm works as follows:
-    1. Start by adding the first suffix (the entire string) to the tree
-    2. For each subsequent suffix:
-        - Find a valid node u (a node with a suffix link or the root)
-        - Follow or compute the suffix link to find node v
-        - Descend from v and potentially split an edge if needed
-        - Add a leaf representing the current suffix.
-*/
+/* McCreight's Suffix Tree Construction */
+// Add suffixes one by one using suffix links and edge splits.
 
 pub fn construct_st_mc(seq: &[u8], alphabet_order: &HashMap<char, usize>) -> SuffixTree {
-    let mut s = seq.to_vec();
-    // Add the $ terminator if its not already there
-    if s.last() != Some(&b'$') {
-        s.push(b'$');
-    }
+    let mut s_vec = seq.to_vec();
+    if s_vec.last() != Some(&b'$') {
+        s_vec.push(b'$');
+    } // Ensure terminator
+    let s = &s_vec[..];
+    let n = s.len();
 
-    // Root initializtion
     let mut tree = SuffixTree::new();
     let root = tree.root;
+    tree.node_mut(root).suffix_link = Some(root); // Root SL -> root
 
-    // Set roots suffix link to itself
-    tree.node_mut(root).suffix_link = Some(root);
+    add_first_suffix(&mut tree, s, alphabet_order);
 
-    // Add the first suffix
-    add_first_suffix(&mut tree, &s, alphabet_order);
+    let first_leaf_id = 1;
+    let node1_is_leaf =
+        tree.nodes.len() > first_leaf_id && tree.node(first_leaf_id).children.is_empty();
 
-    let mut leaf_ids: Vec<usize> = vec![tree.node(root).children.first().unwrap().1.target_node];
+    // leaf_ids[i-1] stores node ID where Suffix(i-1) ended.
+    let mut leaf_ids: Vec<usize> = vec![first_leaf_id];
 
-    // for tracking
-    let mut added_suffixes = vec![0];
+    for i in 1..n {
 
-    // Add remaining suffixes
-    for i in 1..s.len() {
+        // Find ancestor of previous leaf's node with a suffix link (or root)
         let u = find_valid_u(&tree, leaf_ids[i - 1]);
-        let v = follow_or_calc_link(&mut tree, &s, i, u);
-        let parent = descend_and_split(&mut tree, &s, v, i, alphabet_order);
-        let leaf = add_leaf(&mut tree, &s, parent, i, s.len(), i, alphabet_order);
-        leaf_ids.push(leaf);
-        added_suffixes.push(i);
+
+        // Find v = SL(u) (follow or compute)
+        let v = follow_or_calc_link(&mut tree, s, i, u);
+
+        // Walk down from v matching s[i..], split edge if needed
+        let parent_for_new_leaf = descend_and_split(&mut tree, &s, v, i, alphabet_order);
+
+        // Determine where new leaf edge starts in s
+        let (_, matched_len_from_v, _) = find_path(&tree, s, v, i);
+        let leaf_edge_start_index = i + matched_len_from_v;
+
+        let current_suffix_node_id;
+
+        if leaf_edge_start_index >= n {
+            let (w_end_node, _, _) = find_path(&tree, s, v, i);
+            current_suffix_node_id = w_end_node; // Use the existing node
+        } else {
+            let new_leaf_id = add_leaf(
+                &mut tree,
+                s,
+                parent_for_new_leaf,
+                leaf_edge_start_index,
+                n,
+                i,
+                alphabet_order,
+            );
+            current_suffix_node_id = new_leaf_id;
+        }
+        leaf_ids.push(current_suffix_node_id);
     }
 
     return tree;
 }
 
-// Adds the first suffix to an empty tree
 fn add_first_suffix(tree: &mut SuffixTree, s: &[u8], alphabet_order: &HashMap<char, usize>) {
-    let leaf = tree.add_node(tree.root, s.len());
-    tree.node_mut(leaf).suffix_start = Some(0);
+    let n = s.len();
+    let parent_depth = tree.node(tree.root).depth;
+    let edge_len = n;
+    let leaf_depth = parent_depth + edge_len;
 
-    let ch = s[0] as char;
+    let leaf_id = tree.add_node(tree.root, leaf_depth);
+    tree.node_mut(leaf_id).suffix_start = Some(0); // Leaf for Suffix(0)
+
+    let first_char = s[0] as char;
     let edge = StEdge {
         start: 0,
-        end: s.len() - 1,
-        target_node: leaf,
+        end: n - 1,
+        target_node: leaf_id,
     };
+
+    // Add edge to root
     let children = &mut tree.node_mut(tree.root).children;
-    children.push((ch, edge));
+    children.push((first_char, edge));
     children.sort_by_key(|(c, _)| alphabet_order.get(c).copied().unwrap_or(usize::MAX));
 }
 
-fn find_valid_u(tree: &SuffixTree, leaf_i_1: usize) -> usize {
-    let mut u = tree
-        .node(leaf_i_1)
-        .parent
-        .expect("Leaf should have a parent");
+// Find ancestor with SL or root.
+fn find_valid_u(tree: &SuffixTree, node_representing_suffix_i_1: usize) -> usize {
+    let mut current_node_id = node_representing_suffix_i_1;
 
-    // Follow parent links until we find a node with a suffix link
-    while tree.node(u).suffix_link.is_none() && u != tree.root {
-        u = tree.node(u).parent.unwrap_or(tree.root);
+    if let Some(parent_id) = tree.node(current_node_id).parent {
+        if tree.node(parent_id).suffix_link.is_some() {
+            return parent_id;
+        }
+        current_node_id = parent_id;
+    } else {
+        return tree.root;
     }
 
-    return u;
+    // Climb until SL found or we reach root
+    while tree.node(current_node_id).suffix_link.is_none() && current_node_id != tree.root {
+        current_node_id = tree.node(current_node_id).parent.unwrap_or(tree.root);
+    }
+    return current_node_id;
 }
 
+// Follow SL(u) if known, otherwise compute it.
 fn follow_or_calc_link(tree: &mut SuffixTree, s: &[u8], i: usize, u: usize) -> usize {
-    let u_node = tree.node(u);
-
-    if let Some(sl) = u_node.suffix_link {
-        // Follow the suffix link if it exists
-        return sl; // Case IA) SL(u) is known and u is not the root
-    } else if u == tree.root {
-        // Root is its own suffix link
-        return tree.root; // Case IB) SL(u) is known and u is the root
-    } else {
-        let u_prime = tree
-            .node(u)
-            .parent
-            .expect("u should have a parent if not root");
-        let u_prime_node = tree.node(u_prime);
-        let v_prime = u_prime_node.suffix_link.unwrap_or(tree.root);
-
-        // Calculate beta
-        let beta = u_node.depth - u_prime_node.depth;
-
-        // Determine the correct start index
-        let start_index;
-        if u_prime == tree.root {
-            // If u' is the root, beta starts at the beginning of the current suffix
-            start_index = i - beta + 1; // Case IIB: SL(u) is unknown and u' is the root
-        } else {
-            // Otherwise, beta starts after alpha in the current suffix
-            start_index = i - beta; // Case IIA: SL(u) is unknown and u' is not the root
-        }
-
-        let v = node_hops(tree, v_prime, s, start_index, beta);
-
-        tree.node_mut(u).suffix_link = Some(v);
-
+    if u == tree.root {
+        return tree.root;
+    }
+    if let Some(v) = tree.node(u).suffix_link {
         return v;
     }
+
+    // SL(u)
+    let u_parent_id;
+    let u_depth;
+    let u_parent_depth;
+    let beta_start;
+
+    {
+        // Read u properties
+        let u_node = tree.node(u);
+        u_parent_id = u_node.parent.expect("Non-root must have parent");
+        u_depth = u_node.depth;
+        let parent_node = tree.node(u_parent_id);
+        u_parent_depth = parent_node.depth;
+        let edge_to_u = parent_node
+            .children
+            .iter()
+            .find(|(_, edge)| edge.target_node == u)
+            .expect("Edge to u not found");
+        beta_start = edge_to_u.1.start;
+    }
+
+    // Recursively compute v' = SL(parent(u))
+    let v_prime = follow_or_calc_link(tree, s, i - 1, u_parent_id); // Note: i-1
+
+    // Hop down from v' using edge label beta
+    let beta_len = u_depth - u_parent_depth;
+    let v = node_hops(tree, v_prime, s, beta_start, beta_len);
+
+    tree.node_mut(u).suffix_link = Some(v); // Cache SL(u) = v
+    return v;
 }
 
+// Descend from v matching s[i], split if needed. Returns parent for new leaf.
 fn descend_and_split(
     tree: &mut SuffixTree,
     s: &[u8],
-    v: usize,
-    i: usize,
-    order: &HashMap<char, usize>,
+    v: usize, // Start node
+    i: usize, // Suffix index
+    alphabet_order: &HashMap<char, usize>,
 ) -> usize {
-    let (w, _, split) = find_path(tree, s, v, i);
+    let (w_end_node, _, split_info) = find_path(tree, s, v, i);
 
-    match split {
-        Some((ch, start, split_end, target)) => {
+    match split_info {
+        // Might be able to get rid of edge start now
+        Some((edge_char, edge_start, split_idx, original_target_id)) => {
+
             let original_edge = tree
-                .node(v)
+                .node(w_end_node)
                 .children
                 .iter()
-                .find(|(c, _)| *c == ch)
-                .unwrap()
+                .find(|(c, edge)| *c == edge_char && edge.target_node == original_target_id)
+                .expect("Split info but edge not found")
                 .1
                 .clone();
 
-            let original_end = original_edge.end;
-
-            // Return if entire edge has been matched
-            if split_end + 1 > original_end {
-                return target;
+            if original_edge.start > original_edge.end {
+                eprintln!(
+                    "CRITICAL ERROR: Original edge start={} > end={}",
+                    original_edge.start, original_edge.end
+                );
+                panic!("Corrupted edge before split.");
             }
 
-            // Create a new internal node
-            let parent_depth = tree.node(v).depth;
-            let mid_depth = parent_depth + (split_end - start + 1);
-            let mid = tree.add_node(v, mid_depth);
+            let match_len_on_edge = (split_idx + 1).saturating_sub(original_edge.start);
 
-            tree.node_mut(target).parent = Some(mid);
+            let parent_depth = tree.node(w_end_node).depth;
+            let mid_node_depth = parent_depth + match_len_on_edge;
+            let mid_node_id = tree.add_node(w_end_node, mid_node_depth);
 
-            // Create the edge from mid to target
-            let edge_mid_to_target = StEdge {
-                start: split_end + 1,
-                end: original_end,
-                target_node: target,
+            // Populate new edges
+            let mid_to_target_start = split_idx + 1;
+            let mid_to_target_end = original_edge.end;
+            let parent_to_mid_start = original_edge.start;
+            let parent_to_mid_end = split_idx;
+
+            tree.node_mut(original_target_id).parent = Some(mid_node_id);
+
+            if mid_to_target_start <= mid_to_target_end {
+                let edge_mid_to_target = StEdge {
+                    start: mid_to_target_start,
+                    end: mid_to_target_end,
+                    target_node: original_target_id,
+                };
+                let next_char = s[mid_to_target_start] as char;
+                let mid_children = &mut tree.node_mut(mid_node_id).children;
+                mid_children.push((next_char, edge_mid_to_target));
+                mid_children
+                    .sort_by_key(|(c, _)| alphabet_order.get(c).copied().unwrap_or(usize::MAX));
+            }
+
+            let edge_parent_to_mid = StEdge {
+                start: parent_to_mid_start,
+                end: parent_to_mid_end,
+                target_node: mid_node_id,
             };
+            let parent_children = &mut tree.node_mut(w_end_node).children;
+            parent_children
+                .retain(|(c, edge)| !(*c == edge_char && edge.target_node == original_target_id));
+            parent_children.push((edge_char, edge_parent_to_mid));
+            parent_children
+                .sort_by_key(|(c, _)| alphabet_order.get(c).copied().unwrap_or(usize::MAX));
 
-            tree.node_mut(mid)
-                .children
-                .push((s[split_end + 1] as char, edge_mid_to_target));
-            tree.node_mut(mid)
-                .children
-                .sort_by_key(|(c, _)| order.get(c).copied().unwrap_or(usize::MAX));
-
-            // Create the edge from v to mid
-            let v_to_mid = StEdge {
-                start,
-                end: split_end,
-                target_node: mid,
-            };
-
-            // Update Vs children
-            let v_children = &mut tree.node_mut(v).children;
-            v_children.retain(|(c, _)| *c != ch);
-            v_children.push((ch, v_to_mid));
-            v_children.sort_by_key(|(c, _)| order.get(c).copied().unwrap_or(usize::MAX));
-
-            return mid;
+            return mid_node_id; // New leaf parent is the mid-node
         }
-        None => return w,
+        None => {
+            // No split needed, match ended at w_end_node.
+            return w_end_node; // New leaf parent is w_end_node
+        }
     }
 }
 
 fn add_leaf(
     tree: &mut SuffixTree,
     s: &[u8],
-    parent: usize,
-    start: usize,
-    end: usize,
-    suffix_start: usize,
-    order: &HashMap<char, usize>,
+    parent_id: usize,
+    edge_start: usize,
+    s_len: usize,
+    suffix_start_index: usize,
+    alphabet_order: &HashMap<char, usize>,
 ) -> usize {
-    // Create the new leaf node
-    let leaf = tree.add_node(parent, end - start);
-    tree.node_mut(leaf).suffix_start = Some(suffix_start);
+    let parent_depth = tree.node(parent_id).depth;
+    let edge_len = s_len - edge_start;
+    let leaf_depth = parent_depth + edge_len;
 
-    // Get the character for the edge
-    let ch = s[start] as char;
+    let leaf_id = tree.add_node(parent_id, leaf_depth);
+    tree.node_mut(leaf_id).suffix_start = Some(suffix_start_index);
 
-    // Create the edge from parent to leaf
+    let first_char = s[edge_start] as char;
     let edge = StEdge {
-        start,
-        end: end - 1,
-        target_node: leaf,
+        start: edge_start,
+        end: s_len - 1,
+        target_node: leaf_id,
     };
 
-    let children = &mut tree.node_mut(parent).children;
-
-    // Remove any duplicate edges
-    let existing_edge = children
-        .iter()
-        .position(|(c, e)| *c == ch && e.start == start && e.target_node == leaf);
-
-    if let Some(pos) = existing_edge {
-        children.remove(pos);
+    if edge.start > edge.end {
+        eprintln!(
+            "ERROR: add_leaf invalid edge start={} > end={}",
+            edge.start, edge.end
+        );
+        panic!("Invalid edge in add_leaf.");
     }
 
-    // Add the new edge and sort the children
-    children.push((ch, edge));
-    children.sort_by_key(|(c, _)| order.get(c).copied().unwrap_or(usize::MAX));
+    // Add edge to parent, sort children
+    let parent_children = &mut tree.node_mut(parent_id).children;
+    parent_children.push((first_char, edge));
+    parent_children.sort_by_key(|(c, _)| alphabet_order.get(c).copied().unwrap_or(usize::MAX));
 
-    return leaf;
+    return leaf_id;
 }
 
-
+// Follow path from start_node_id.
 fn find_path(
     tree: &SuffixTree,
     s: &[u8],
-    mut node_id: usize,
-    mut i: usize,
+    start_node_id: usize,
+    i: usize, // Pattern start index in s
 ) -> (usize, usize, Option<(char, usize, usize, usize)>) {
-    let mut total_matched = 0;
+    let mut current_node_id = start_node_id;
+    let mut total_matched_from_start = 0;
 
-    while i < s.len() {
-        let ch = s[i] as char;
+    loop {
+        let pattern_char_idx = i + total_matched_from_start;
+        if pattern_char_idx >= s.len() {
+            return (current_node_id, total_matched_from_start, None);
+        } // Whole pattern matched
+        let pattern_char = s[pattern_char_idx] as char;
 
-        // Find the edge for the current character
-        let edge = match tree
-            .node(node_id)
+        // Find edge starting with pattern_char
+        let edge_info = tree
+            .node(current_node_id)
             .children
             .iter()
-            .find(|(label, _)| *label == ch)
-        {
-            Some((_, e)) => e,
-            None => break,
-        };
+            .find(|(label_char, _)| *label_char == pattern_char);
 
-        let edge_slice = &s[edge.start..=edge.end];
-        let mut j = 0;
+        if edge_info.is_none() {
+            return (current_node_id, total_matched_from_start, None);
+        }
 
-        while i < s.len() && j < edge_slice.len() {
-            if s[i] != edge_slice[j] {
-                // Split on mismatch
-                if j == 0 {
-                    return (node_id, total_matched, None);
-                }
+        let (_, edge) = edge_info.unwrap();
+        let edge_start = edge.start;
+        let edge_end = edge.end;
+        let edge_target_id = edge.target_node;
+        let edge_first_char = s[edge_start] as char;
 
-                let split_start = edge.start;
-                let split_end = edge.start + j - 1;
+        // Compare with edge
+        let mut matched_on_edge = 0;
+        loop {
+            let pattern_idx = pattern_char_idx + matched_on_edge;
+            let edge_idx = edge_start + matched_on_edge;
 
-                let matched = total_matched + j;
+            if edge_idx > edge_end {
+                break;
+            } 
+            if pattern_idx >= s.len() {
+                break;
+            }
+
+            if s[pattern_idx] != s[edge_idx] {
+                let split_end_idx = edge_idx - 1;
+                let split_info = (edge_first_char, edge_start, split_end_idx, edge_target_id);
                 return (
-                    node_id,
-                    matched,
-                    Some((ch, split_start, split_end, edge.target_node)),
+                    current_node_id,
+                    total_matched_from_start + matched_on_edge,
+                    Some(split_info),
                 );
             }
-            i += 1;
-            j += 1;
+            matched_on_edge += 1;
         }
 
-        total_matched += edge_slice.len();
-        node_id = edge.target_node;
-    }
+        total_matched_from_start += matched_on_edge;
 
-    return (node_id, total_matched, None);
+        let edge_consumed = (edge_start + matched_on_edge) > edge_end;
+        let pattern_consumed = (pattern_char_idx + matched_on_edge) >= s.len();
+
+        if edge_consumed {
+            current_node_id = edge_target_id; // Move to target node
+        } else if pattern_consumed {
+            let split_end_idx = edge_start + matched_on_edge - 1;
+            let split_info = (edge_first_char, edge_start, split_end_idx, edge_target_id);
+            return (current_node_id, total_matched_from_start, Some(split_info));
+        } else {
+            panic!("Unexpected state in find_path edge comparison.");
+        }
+    }
 }
 
-// Walks the tree for a given string segment
+// Traverse using string segment for SL calculation. Splits edges.
 fn node_hops(
     tree: &mut SuffixTree,
-    mut node_id: usize,
+    start_node_id: usize,
     s: &[u8],
-    mut i: usize,
-    mut len: usize,
+    i: usize,   // Segment start index
+    len: usize, // Segment length
 ) -> usize {
-    if len == 0 {
-        return node_id;
+    let mut current_node_id = start_node_id;
+    let mut current_s_idx = i;
+    let mut remaining_len = len;
+
+    if remaining_len == 0 {
+        return start_node_id;
     }
 
-    while len > 0 {
-        let ch = s[i] as char;
+    while remaining_len > 0 {
+        if current_s_idx >= s.len() {
+            // Index check
+            eprintln!("ERROR: node_hops index out of bounds.");
+            return current_node_id;
+        }
+        let next_char = s[current_s_idx] as char;
 
-        // Find the matching edge
-        let edge = match tree.node(node_id).children.iter().find(|(c, _)| *c == ch) {
-            Some((_, e)) => e.clone(),
+        // Find edge, clone for split logic
+        let edge_info = tree
+            .node(current_node_id)
+            .children
+            .iter()
+            .find(|(c, _)| *c == next_char)
+            .map(|(_, e)| e.clone());
+
+        let edge = match edge_info {
+            Some(e) => e,
             None => {
-                return node_id;
+                eprintln!("ERROR: node_hops path broken.");
+                return current_node_id; // Error upstream
             }
         };
 
-        // Calculate how much of the edge we can walk
-        let edge_len = edge.end - edge.start + 1;
+        let edge_len = (edge.end + 1).saturating_sub(edge.start);
 
-        if len == edge_len {
-            node_id = edge.target_node;
-            i += edge_len;
-            len = 0;
-        } else if len < edge_len {
+        if remaining_len < edge_len {
+            // Hop ends mid-edge -> Split
+            let parent_id = current_node_id;
+            let original_target_id = edge.target_node;
 
-            // Need to split the edge
-            let mid = tree.add_node(node_id, tree.node(node_id).depth + len);
+            // Create mid node
+            let parent_depth = tree.node(parent_id).depth;
+            let mid_node_depth = parent_depth + remaining_len;
+            let mid_node_id = tree.add_node(parent_id, mid_node_depth);
 
-            // Edge from mid to the original target
+            let mid_to_target_start = edge.start + remaining_len;
+            let mid_to_target_end = edge.end;
+            let parent_to_mid_start = edge.start;
+            let parent_to_mid_end = edge.start + remaining_len - 1;
+
+            tree.node_mut(original_target_id).parent = Some(mid_node_id);
+
             let edge_mid_to_target = StEdge {
-                start: edge.start + len,
-                end: edge.end,
-                target_node: edge.target_node,
+                start: mid_to_target_start,
+                end: mid_to_target_end,
+                target_node: original_target_id,
             };
-
-            // Edge from the original source to mid
-            let edge_parent_to_mid = StEdge {
-                start: edge.start,
-                end: edge.start + len - 1,
-                target_node: mid,
-            };
-
-            // Update the connections
-            tree.node_mut(mid)
+            let mid_target_first_char = s[mid_to_target_start] as char;
+            tree.node_mut(mid_node_id)
                 .children
-                .push((s[edge.start + len] as char, edge_mid_to_target));
-            tree.node_mut(edge.target_node).parent = Some(mid);
+                .push((mid_target_first_char, edge_mid_to_target));
 
-            let children = &mut tree.node_mut(node_id).children;
-            children.retain(|(c, _)| *c != ch);
-            children.push((ch, edge_parent_to_mid));
+            // Replace parent
+            let edge_parent_to_mid = StEdge {
+                start: parent_to_mid_start,
+                end: parent_to_mid_end,
+                target_node: mid_node_id,
+            };
+            let parent_children = &mut tree.node_mut(parent_id).children;
+            parent_children
+                .retain(|(c, e)| !(*c == next_char && e.target_node == original_target_id));
+            parent_children.push((next_char, edge_parent_to_mid));
 
-            return mid;
+            return mid_node_id;
         } else {
-            // Edge is shorter than the remaining length - follow it and continue
-            node_id = edge.target_node;
-            i += edge_len;
-            len -= edge_len;
+            // remaining_len >= edge_len
+            // Hop covers this entire edge
+            current_node_id = edge.target_node;
+            current_s_idx += edge_len;
+            remaining_len -= edge_len;
         }
     }
 
-    return node_id;
+    return current_node_id;
 }
